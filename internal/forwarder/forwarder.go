@@ -7,7 +7,9 @@ import (
 	"github.com/shaharia-lab/telemetry-forwarder/internal/config"
 	"io/ioutil"
 	"log"
+	"math"
 	"net/http"
+	"sync"
 	"time"
 )
 
@@ -48,6 +50,78 @@ func TelemetryCollectHandler(config *config.Config) http.HandlerFunc {
 	}
 }
 
+const (
+	circuitClosed = iota
+	circuitOpen
+	circuitHalfOpen
+)
+
+type circuitBreaker struct {
+	state       int
+	failCount   int
+	lastFailure time.Time
+	mutex       sync.Mutex
+	timeout     time.Duration
+	maxFailures int
+}
+
+var honeycombCircuit = &circuitBreaker{
+	state:       circuitClosed,
+	maxFailures: 5,
+	timeout:     1 * time.Minute,
+}
+
+func (cb *circuitBreaker) isAllowed() bool {
+	cb.mutex.Lock()
+	defer cb.mutex.Unlock()
+
+	switch cb.state {
+	case circuitClosed:
+		return true
+	case circuitOpen:
+		if time.Since(cb.lastFailure) > cb.timeout {
+			cb.state = circuitHalfOpen
+			log.Println("Honeycomb circuit half-open: testing API availability")
+			return true
+		}
+		return false
+	case circuitHalfOpen:
+		return true
+	default:
+		return true
+	}
+}
+
+func (cb *circuitBreaker) recordSuccess() {
+	cb.mutex.Lock()
+	defer cb.mutex.Unlock()
+
+	if cb.state == circuitHalfOpen {
+		cb.state = circuitClosed
+		cb.failCount = 0
+		log.Println("Honeycomb circuit closed: API is back to normal")
+	}
+}
+
+func (cb *circuitBreaker) recordFailure() {
+	cb.mutex.Lock()
+	defer cb.mutex.Unlock()
+
+	cb.lastFailure = time.Now()
+
+	switch cb.state {
+	case circuitClosed:
+		cb.failCount++
+		if cb.failCount >= cb.maxFailures {
+			cb.state = circuitOpen
+			log.Println("Honeycomb circuit open: stopping requests temporarily")
+		}
+	case circuitHalfOpen:
+		cb.state = circuitOpen
+		log.Println("Honeycomb circuit reopened: API still having issues")
+	}
+}
+
 func forwardToHoneycomb(config *config.Config, event OTelEvent) {
 	if config.HoneycombAPIKey == "" {
 		log.Println("Skipping Honeycomb forwarding: API key not set")
@@ -55,28 +129,28 @@ func forwardToHoneycomb(config *config.Config, event OTelEvent) {
 		return
 	}
 
-	// Initialize with standard OTel fields
+	if !honeycombCircuit.isAllowed() {
+		log.Printf("Circuit open, skipping event '%s' to Honeycomb", event.Name)
+		return
+	}
+
 	eventData := map[string]interface{}{
 		"name": event.Name,                                                      // OTel standard field
 		"time": time.Unix(0, event.TimeUnixNano).UTC().Format(time.RFC3339Nano), // Standard timestamp format
 	}
 
-	// Standard OTel Resource attributes
 	if event.Resource != nil {
 		for k, v := range event.Resource {
-			// Keep original resource attributes without prefix
 			eventData[k] = v
 		}
 	}
 
-	// Standard OTel Attributes
 	if event.Attributes != nil {
 		for k, v := range event.Attributes {
 			eventData[k] = v
 		}
 	}
 
-	// Standard OTel fields with proper naming
 	if event.Body != nil {
 		eventData["body"] = event.Body
 	}
@@ -87,10 +161,10 @@ func forwardToHoneycomb(config *config.Config, event OTelEvent) {
 		eventData["severity.number"] = event.SeverityNumber
 	}
 	if event.TraceID != "" {
-		eventData["trace_id"] = event.TraceID // Standard OTel naming
+		eventData["trace_id"] = event.TraceID
 	}
 	if event.SpanID != "" {
-		eventData["span_id"] = event.SpanID // Standard OTel naming
+		eventData["span_id"] = event.SpanID
 	}
 	if event.DroppedAttributesCount > 0 {
 		eventData["dropped_attributes_count"] = event.DroppedAttributesCount
@@ -109,25 +183,55 @@ func forwardToHoneycomb(config *config.Config, event OTelEvent) {
 		return
 	}
 
-	// Set headers
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Honeycomb-Team", config.HoneycombAPIKey)
 
-	// Send request
-	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Printf("Failed to send event to Honeycomb: %v", err)
-		return
-	}
-	defer resp.Body.Close()
+	maxRetries := 3
+	success := false
 
-	if resp.StatusCode >= 300 {
-		log.Printf("Honeycomb API returned error status: %d", resp.StatusCode)
-		respBody, _ := ioutil.ReadAll(resp.Body)
-		log.Printf("Response body: %s", string(respBody))
-		return
+	client := &http.Client{Timeout: 15 * time.Second}
+
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		var resp *http.Response
+		resp, err = client.Do(req)
+
+		if err != nil {
+			log.Printf("Attempt %d: Failed to send event to Honeycomb: %v", attempt+1, err)
+		} else {
+			defer func(resp *http.Response) {
+				if resp != nil && resp.Body != nil {
+					resp.Body.Close()
+				}
+			}(resp)
+
+			if resp.StatusCode < 300 {
+				success = true
+				log.Printf("Successfully forwarded event '%s' to Honeycomb", event.Name)
+				break
+			}
+
+			respBody, readErr := ioutil.ReadAll(resp.Body)
+			if readErr != nil {
+				log.Printf("Attempt %d: Error reading response body: %v", attempt+1, readErr)
+			} else {
+				log.Printf("Attempt %d: Honeycomb API returned error status: %d, body: %s",
+					attempt+1, resp.StatusCode, string(respBody))
+			}
+
+			if resp.StatusCode >= 400 && resp.StatusCode < 500 {
+				break
+			}
+		}
+
+		if attempt < maxRetries-1 {
+			backoffTime := time.Duration(math.Pow(2, float64(attempt))) * time.Second
+			time.Sleep(backoffTime)
+		}
 	}
 
-	log.Printf("Successfully forwarded event '%s' to Honeycomb", event.Name)
+	if success {
+		honeycombCircuit.recordSuccess()
+	} else {
+		honeycombCircuit.recordFailure()
+	}
 }
