@@ -1,4 +1,4 @@
-package forwarder
+package types
 
 // OTelEvent represents an OpenTelemetry event following the spec
 type OTelEvent struct {
