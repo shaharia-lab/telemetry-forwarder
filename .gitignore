@@ -1,3 +1,5 @@
 /.idea
 /telemetry-forwarder
 /.env
+/dist
+/coverage.out
