@@ -15,13 +15,16 @@ import (
 	"time"
 )
 
+// SharedHTTP is a shared HTTP client for sending telemetry data.
 var SharedHTTP = &http2.Client{}
 
+// HoneycombProvider is a provider for sending telemetry data to Honeycomb.
 type HoneycombProvider struct {
 	config         *config.Config
 	circuitBreaker *http2.CircuitBreaker
 }
 
+// NewHoneycombProvider creates a new HoneycombProvider with the given configuration.
 func NewHoneycombProvider(config *config.Config) *HoneycombProvider {
 	return &HoneycombProvider{
 		config:         config,
@@ -29,14 +32,17 @@ func NewHoneycombProvider(config *config.Config) *HoneycombProvider {
 	}
 }
 
+// Name returns the name of the provider.
 func (h *HoneycombProvider) Name() string {
 	return "Honeycomb"
 }
 
+// IsEnabled checks if the provider is enabled based on the configuration.
 func (h *HoneycombProvider) IsEnabled() bool {
 	return h.config.HoneycombAPIKey != "" && h.config.HoneycombAPIURL != ""
 }
 
+// Send sends the telemetry event to Honeycomb.
 func (h *HoneycombProvider) Send(ctx context.Context, event types.OTelEvent) error {
 	if !h.IsEnabled() {
 		return fmt.Errorf("honeycomb provider not configured")
@@ -46,7 +52,7 @@ func (h *HoneycombProvider) Send(ctx context.Context, event types.OTelEvent) err
 		return fmt.Errorf("circuit open for %s provider", h.Name())
 	}
 
-	payload, err := json.Marshal(prepareTelemetryData(event))
+	payload, err := json.Marshal(event.Prepare())
 	if err != nil {
 		return fmt.Errorf("failed to marshal event: %w", err)
 	}
@@ -119,44 +125,4 @@ func (h *HoneycombProvider) Send(ctx context.Context, event types.OTelEvent) err
 		h.circuitBreaker.RecordFailure()
 		return fmt.Errorf("failed to send to Honeycomb after multiple attempts")
 	}
-}
-
-func prepareTelemetryData(event types.OTelEvent) map[string]interface{} {
-	eventData := map[string]interface{}{
-		"name": event.Name,
-		"time": time.Unix(0, event.TimeUnixNano).UTC().Format(time.RFC3339Nano),
-	}
-
-	if event.Resource != nil {
-		for k, v := range event.Resource {
-			eventData[k] = v
-		}
-	}
-
-	if event.Attributes != nil {
-		for k, v := range event.Attributes {
-			eventData[k] = v
-		}
-	}
-
-	if event.Body != nil {
-		eventData["body"] = event.Body
-	}
-	if event.SeverityText != "" {
-		eventData["severity.text"] = event.SeverityText
-	}
-	if event.SeverityNumber != 0 {
-		eventData["severity.number"] = event.SeverityNumber
-	}
-	if event.TraceID != "" {
-		eventData["trace_id"] = event.TraceID
-	}
-	if event.SpanID != "" {
-		eventData["span_id"] = event.SpanID
-	}
-	if event.DroppedAttributesCount > 0 {
-		eventData["dropped_attributes_count"] = event.DroppedAttributesCount
-	}
-
-	return eventData
 }

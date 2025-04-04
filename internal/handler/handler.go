@@ -10,6 +10,7 @@ import (
 	"sync"
 )
 
+// TelemetryCollectHandler handles incoming telemetry events and forwards them to the configured providers.
 func TelemetryCollectHandler(config *config.Config) http.HandlerFunc {
 	registry := provider.NewProviderRegistry(config)
 
@@ -34,7 +35,6 @@ func TelemetryCollectHandler(config *config.Config) http.HandlerFunc {
 					if err := p.Send(r.Context(), event); err != nil {
 						log.Printf("Error forwarding to %s: %v", p.Name(), err)
 					}
-					log.Printf("Successfully forwarded to %s", p.Name())
 				}(prv)
 			}
 		}
