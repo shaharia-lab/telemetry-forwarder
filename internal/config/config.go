@@ -6,7 +6,7 @@ import (
 
 // Environment variables
 type Config struct {
-	Port             string `envconfig:"PORT" default:"8080"`
+	HTTPAPIPort      string `envconfig:"HTTP_API_PORT" default:"8080"`
 	HoneycombAPIKey  string `envconfig:"HONEYCOMB_API_KEY"`
 	HoneycombDataset string `envconfig:"HONEYCOMB_DATASET" default:"cli-telemetry"`
 	HoneycombAPIURL  string `envconfig:"HONEYCOMB_API_URL"`

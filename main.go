@@ -18,7 +18,7 @@ func main() {
 	http.HandleFunc("/ping", handlePing)
 	http.HandleFunc("/telemetry/event", middleware.CORS(forwarder.TelemetryCollectHandler(cfg)))
 
-	addr := fmt.Sprintf(":%s", cfg.Port)
+	addr := fmt.Sprintf(":%s", cfg.HTTPAPIPort)
 	log.Printf("Starting telemetry server on %s", addr)
 	log.Fatal(http.ListenAndServe(addr, nil))
 }
