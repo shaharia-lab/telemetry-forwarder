@@ -55,49 +55,48 @@ func forwardToHoneycomb(config *config.Config, event OTelEvent) {
 		return
 	}
 
+	// Initialize with standard OTel fields
 	eventData := map[string]interface{}{
-		"event_name": event.Name,
+		"name": event.Name,                                                      // OTel standard field
+		"time": time.Unix(0, event.TimeUnixNano).UTC().Format(time.RFC3339Nano), // Standard timestamp format
 	}
 
+	// Standard OTel Resource attributes
+	if event.Resource != nil {
+		for k, v := range event.Resource {
+			// Keep original resource attributes without prefix
+			eventData[k] = v
+		}
+	}
+
+	// Standard OTel Attributes
 	if event.Attributes != nil {
 		for k, v := range event.Attributes {
 			eventData[k] = v
 		}
 	}
 
-	if event.Resource != nil {
-		for k, v := range event.Resource {
-			eventData["resource."+k] = v
-		}
-	}
-
+	// Standard OTel fields with proper naming
 	if event.Body != nil {
 		eventData["body"] = event.Body
 	}
 	if event.SeverityText != "" {
-		eventData["severity_text"] = event.SeverityText
+		eventData["severity.text"] = event.SeverityText
 	}
 	if event.SeverityNumber != 0 {
-		eventData["severity_number"] = event.SeverityNumber
+		eventData["severity.number"] = event.SeverityNumber
 	}
 	if event.TraceID != "" {
-		eventData["trace.trace_id"] = event.TraceID
+		eventData["trace_id"] = event.TraceID // Standard OTel naming
 	}
 	if event.SpanID != "" {
-		eventData["trace.span_id"] = event.SpanID
+		eventData["span_id"] = event.SpanID // Standard OTel naming
 	}
 	if event.DroppedAttributesCount > 0 {
 		eventData["dropped_attributes_count"] = event.DroppedAttributesCount
 	}
 
-	timestamp := time.Unix(0, event.TimeUnixNano).UTC().Format(time.RFC3339Nano)
-
-	honeycombEvent := HoneycombEvent{
-		Data:      eventData,
-		Timestamp: timestamp,
-	}
-
-	payload, err := json.Marshal(honeycombEvent)
+	payload, err := json.Marshal(eventData)
 	if err != nil {
 		log.Printf("Failed to marshal Honeycomb event: %v", err)
 		return

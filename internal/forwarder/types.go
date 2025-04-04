@@ -13,9 +13,3 @@ type OTelEvent struct {
 	DroppedAttributesCount int                    `json:"droppedAttributesCount,omitempty"`
 	Resource               map[string]interface{} `json:"resource,omitempty"`
 }
-
-// HoneycombEvent represents the structure expected by Honeycomb API
-type HoneycombEvent struct {
-	Data      map[string]interface{} `json:"data"`
-	Timestamp string                 `json:"timestamp,omitempty"`
-}
