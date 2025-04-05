@@ -3,8 +3,9 @@ package main
 import (
 	"fmt"
 	"github.com/shaharia-lab/telemetry-forwarder/internal/config"
-	"github.com/shaharia-lab/telemetry-forwarder/internal/forwarder"
+	"github.com/shaharia-lab/telemetry-forwarder/internal/handler"
 	"github.com/shaharia-lab/telemetry-forwarder/internal/middleware"
+	"github.com/shaharia-lab/telemetry-forwarder/internal/provider"
 	"log"
 	"net/http"
 )
@@ -16,7 +17,8 @@ func main() {
 	}
 
 	http.HandleFunc("/ping", handlePing)
-	http.HandleFunc("/telemetry/event", middleware.CORS(forwarder.TelemetryCollectHandler(cfg)))
+	providerRegistry := provider.NewProviderRegistry(cfg)
+	http.HandleFunc("/telemetry/event", middleware.CORS(handler.TelemetryCollectHandler(providerRegistry)))
 
 	addr := fmt.Sprintf(":%s", cfg.HTTPAPIPort)
 	log.Printf("Starting telemetry server on %s", addr)
