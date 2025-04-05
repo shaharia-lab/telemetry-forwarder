@@ -32,7 +32,6 @@ func TelemetryCollectHandler(providerRegistry *provider.ProviderRegistry) http.H
 					if err := p.Send(r.Context(), event); err != nil {
 						log.Printf("Error forwarding to %s: %v", p.Name(), err)
 					}
-					log.Printf("Event sent to %s", p.Name())
 				}(prv)
 			}
 		}
