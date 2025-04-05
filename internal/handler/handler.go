@@ -2,7 +2,6 @@ package handler
 
 import (
 	"encoding/json"
-	"github.com/shaharia-lab/telemetry-forwarder/internal/config"
 	"github.com/shaharia-lab/telemetry-forwarder/internal/provider"
 	"github.com/shaharia-lab/telemetry-forwarder/internal/types"
 	"log"
@@ -11,9 +10,7 @@ import (
 )
 
 // TelemetryCollectHandler handles incoming telemetry events and forwards them to the configured providers.
-func TelemetryCollectHandler(config *config.Config) http.HandlerFunc {
-	registry := provider.NewProviderRegistry(config)
-
+func TelemetryCollectHandler(providerRegistry *provider.ProviderRegistry) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -27,7 +24,7 @@ func TelemetryCollectHandler(config *config.Config) http.HandlerFunc {
 		}
 
 		var wg sync.WaitGroup
-		for _, prv := range registry.GetAll() {
+		for _, prv := range providerRegistry.GetAll() {
 			if prv.IsEnabled() {
 				wg.Add(1)
 				go func(p provider.Provider) {
