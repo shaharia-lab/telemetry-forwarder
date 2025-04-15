@@ -10,6 +10,9 @@ type Config struct {
 	HoneycombAPIKey  string `envconfig:"HONEYCOMB_API_KEY"`
 	HoneycombDataset string `envconfig:"HONEYCOMB_DATASET" default:"cli-telemetry"`
 	HoneycombAPIURL  string `envconfig:"HONEYCOMB_API_URL"`
+
+	GCPProjectID string `envconfig:"GCP_PROJECT_ID"`
+	GCPLogName   string `envconfig:"GCP_LOG_NAME" default:"telemetry-forwarder-events"`
 }
 
 // Load loads the configuration from environment variables

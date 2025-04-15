@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"github.com/shaharia-lab/telemetry-forwarder/internal/config"
 	"github.com/shaharia-lab/telemetry-forwarder/internal/handler"
@@ -17,7 +18,16 @@ func main() {
 	}
 
 	http.HandleFunc("/ping", handlePing)
+
+	//registry.Register(NewHoneycombProvider(cfg))
+	gcpLogging, err := provider.NewGCPLoggingProvider(context.Background(), cfg)
+	if err != nil {
+		log.Fatalf("Failed to create GCP Logging provider: %v", err)
+	}
+
 	providerRegistry := provider.NewProviderRegistry(cfg)
+	providerRegistry.Register(gcpLogging)
+
 	http.HandleFunc("/telemetry/event", middleware.CORS(handler.TelemetryCollectHandler(providerRegistry)))
 
 	addr := fmt.Sprintf(":%s", cfg.HTTPAPIPort)

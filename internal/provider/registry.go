@@ -15,8 +15,6 @@ func NewProviderRegistry(cfg *config.Config) *ProviderRegistry {
 		providers: make(map[string]Provider),
 	}
 
-	registry.Register(NewHoneycombProvider(cfg))
-
 	return registry
 }
 
