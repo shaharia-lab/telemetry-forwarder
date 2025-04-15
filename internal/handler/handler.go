@@ -10,7 +10,7 @@ import (
 )
 
 // TelemetryCollectHandler handles incoming telemetry events and forwards them to the event processor.
-func TelemetryCollectHandler(eventProcessor *event.EventProcessor) http.HandlerFunc {
+func TelemetryCollectHandler(eventProcessor *event.Processor) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)

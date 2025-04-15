@@ -10,27 +10,27 @@ import (
 	"github.com/shaharia-lab/telemetry-forwarder/internal/types"
 )
 
-type EventProcessor struct {
+type Processor struct {
 	providerRegistry *provider.Registry
 	eventChan        chan types.OTelEvent
 	done             chan struct{}
 	wg               sync.WaitGroup
 }
 
-func NewEventProcessor(providerRegistry *provider.Registry, bufferSize int) *EventProcessor {
-	return &EventProcessor{
+func NewEventProcessor(providerRegistry *provider.Registry, bufferSize int) *Processor {
+	return &Processor{
 		providerRegistry: providerRegistry,
 		eventChan:        make(chan types.OTelEvent, bufferSize),
 		done:             make(chan struct{}),
 	}
 }
 
-func (p *EventProcessor) Start() {
+func (p *Processor) Start() {
 	p.wg.Add(1)
 	go p.processEvents()
 }
 
-func (p *EventProcessor) processEvents() {
+func (p *Processor) processEvents() {
 	defer p.wg.Done()
 
 	for {
@@ -38,16 +38,13 @@ func (p *EventProcessor) processEvents() {
 		case event := <-p.eventChan:
 			p.handleEvent(event)
 		case <-p.done:
-			// Process any remaining events in the channel
 			log.Println("Event processor shutting down, processing remaining events...")
 
-			// Process any remaining events
 			for {
 				select {
 				case event := <-p.eventChan:
 					p.handleEvent(event)
 				default:
-					// No more events in the channel
 					log.Println("Finished processing all events")
 					return
 				}
@@ -56,7 +53,7 @@ func (p *EventProcessor) processEvents() {
 	}
 }
 
-func (p *EventProcessor) handleEvent(event types.OTelEvent) {
+func (p *Processor) handleEvent(event types.OTelEvent) {
 	var providerWg sync.WaitGroup
 	ctx := context.Background()
 
@@ -74,21 +71,18 @@ func (p *EventProcessor) handleEvent(event types.OTelEvent) {
 	providerWg.Wait()
 }
 
-func (p *EventProcessor) EnqueueEvent(event types.OTelEvent) {
-	// Non-blocking send with timeout in case the channel is full
+func (p *Processor) EnqueueEvent(event types.OTelEvent) {
 	select {
 	case p.eventChan <- event:
-		// Event successfully enqueued
 	case <-time.After(100 * time.Millisecond):
 		log.Println("Warning: Event processor queue is full, dropping event")
 	}
 }
 
-func (p *EventProcessor) Shutdown() error {
+func (p *Processor) Shutdown() error {
 	log.Println("Shutting down event processor...")
 	close(p.done)
 
-	// Wait for the processor goroutine to finish
 	p.wg.Wait()
 	close(p.eventChan)
 
