@@ -20,7 +20,10 @@ type OTelEvent struct {
 func (event OTelEvent) Prepare() map[string]interface{} {
 	eventData := map[string]interface{}{
 		"name": event.Name,
-		"time": time.Unix(0, event.TimeUnixNano).UTC().Format(time.RFC3339Nano),
+	}
+
+	if event.TimeUnixNano != 0 {
+		eventData["time"] = time.Unix(0, event.TimeUnixNano).UTC()
 	}
 
 	if event.Resource != nil {
