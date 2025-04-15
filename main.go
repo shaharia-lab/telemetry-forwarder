@@ -33,6 +33,7 @@ func main() {
 
 	providerRegistry := provider.NewProviderRegistry(cfg)
 	providerRegistry.Register(gcpLogging)
+	providerRegistry.Register(provider.NewHoneycombProvider(cfg))
 
 	eventProcessor := event.NewEventProcessor(providerRegistry, 100) // Buffer size of 100 events
 	eventProcessor.Start()
