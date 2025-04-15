@@ -1,3 +1,4 @@
+// Package event provides functionality to process telemetry events and forward them to registered providers.If thIf
 package event
 
 import (
@@ -10,6 +11,7 @@ import (
 	"github.com/shaharia-lab/telemetry-forwarder/internal/types"
 )
 
+// Processor is responsible for processing telemetry events and forwarding them to registered providers.
 type Processor struct {
 	providerRegistry *provider.Registry
 	eventChan        chan types.OTelEvent
