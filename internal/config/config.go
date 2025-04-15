@@ -4,7 +4,7 @@ import (
 	"github.com/kelseyhightower/envconfig"
 )
 
-// Environment variables
+// Config holds the configuration for the telemetry forwarder
 type Config struct {
 	HTTPAPIPort      string `envconfig:"HTTP_API_PORT" default:"8080"`
 	HoneycombAPIKey  string `envconfig:"HONEYCOMB_API_KEY"`
