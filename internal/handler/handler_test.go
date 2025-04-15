@@ -4,93 +4,129 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"github.com/shaharia-lab/telemetry-forwarder/internal/config"
-	"github.com/shaharia-lab/telemetry-forwarder/internal/provider"
-	"github.com/shaharia-lab/telemetry-forwarder/internal/types"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
+
+	"github.com/shaharia-lab/telemetry-forwarder/internal/config"
+	"github.com/shaharia-lab/telemetry-forwarder/internal/event"
+	"github.com/shaharia-lab/telemetry-forwarder/internal/provider"
+	"github.com/shaharia-lab/telemetry-forwarder/internal/types"
 )
 
 // MockProvider implements the provider.Provider interface for testing
 type MockProvider struct {
-	mock.Mock
-	enabled bool
-	name    string
+	SentEvents []types.OTelEvent
 }
 
-func (m *MockProvider) Name() string {
-	return m.name
+func (mp *MockProvider) Send(ctx context.Context, event types.OTelEvent) error {
+	mp.SentEvents = append(mp.SentEvents, event)
+	return nil
 }
 
-func (m *MockProvider) IsEnabled() bool {
-	return m.enabled
+func (mp *MockProvider) Name() string {
+	return "mock-provider"
 }
 
-func (m *MockProvider) Send(ctx context.Context, event types.OTelEvent) error {
-	args := m.Called(ctx, event)
-	return args.Error(0)
+func (mp *MockProvider) IsEnabled() bool {
+	return true
 }
 
-func TestTelemetryCollectHandler_Success(t *testing.T) {
-	testCases := []struct {
+func (mp *MockProvider) Close() error {
+	return nil
+}
+
+func TestTelemetryCollectHandler(t *testing.T) {
+	tests := []struct {
 		name           string
-		event          types.OTelEvent
-		providers      []provider.Provider
+		method         string
+		requestBody    interface{}
 		expectedStatus int
+		shouldEnqueue  bool
 	}{
 		{
-			name: "successful event processing",
-			event: types.OTelEvent{
-				Name: "test_event",
-				Attributes: map[string]interface{}{
-					"key1": "value1",
-					"key2": "value2",
-				},
-			},
-			providers: func() []provider.Provider {
-				mockProvider1 := &MockProvider{enabled: true, name: "provider1"}
-				mockProvider1.On("Send", mock.Anything, mock.Anything).Return(nil)
-
-				mockProvider2 := &MockProvider{enabled: true, name: "provider2"}
-				mockProvider2.On("Send", mock.Anything, mock.Anything).Return(nil)
-
-				mockDisabledProvider := &MockProvider{enabled: false, name: "disabled-provider"}
-				return []provider.Provider{mockProvider1, mockProvider2, mockDisabledProvider}
-			}(),
-			expectedStatus: http.StatusOK,
+			name:           "valid POST request",
+			method:         http.MethodPost,
+			requestBody:    types.OTelEvent{Name: "test-event", Attributes: map[string]interface{}{"key": "value"}},
+			expectedStatus: http.StatusAccepted,
+			shouldEnqueue:  true,
+		},
+		{
+			name:           "invalid method",
+			method:         http.MethodGet,
+			requestBody:    nil,
+			expectedStatus: http.StatusMethodNotAllowed,
+			shouldEnqueue:  false,
+		},
+		{
+			name:           "invalid request body",
+			method:         http.MethodPost,
+			requestBody:    "invalid json",
+			expectedStatus: http.StatusBadRequest,
+			shouldEnqueue:  false,
 		},
 	}
 
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			registry := provider.NewProviderRegistry(&config.Config{})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &config.Config{}
+			registry := provider.NewProviderRegistry(cfg)
 
-			for _, p := range tc.providers {
-				registry.Register(p)
+			mockProvider := &MockProvider{
+				SentEvents: []types.OTelEvent{},
 			}
 
-			handler := TelemetryCollectHandler(registry)
+			registry.Register(mockProvider)
 
-			eventJSON, err := json.Marshal(tc.event)
-			assert.NoError(t, err)
-			req, err := http.NewRequest(http.MethodPost, "/collect", bytes.NewReader(eventJSON))
-			assert.NoError(t, err)
+			processor := event.NewEventProcessor(registry, 10)
 
-			w := httptest.NewRecorder()
+			processor.Start()
+			defer processor.Shutdown()
 
-			handler(w, req)
+			handler := TelemetryCollectHandler(processor)
 
-			assert.Equal(t, tc.expectedStatus, w.Code)
+			var body []byte
+			var err error
 
-			for _, p := range tc.providers {
-				mockP := p.(*MockProvider)
-				if mockP.IsEnabled() {
-					mockP.AssertCalled(t, "Send", mock.Anything, tc.event)
-				} else {
-					mockP.AssertNotCalled(t, "Send", mock.Anything, mock.Anything)
+			if tt.requestBody != nil {
+				switch v := tt.requestBody.(type) {
+				case string:
+					body = []byte(v)
+				default:
+					body, err = json.Marshal(tt.requestBody)
+					if err != nil {
+						t.Fatalf("Failed to marshal request body: %v", err)
+					}
+				}
+			}
+
+			req := httptest.NewRequest(tt.method, "/collect", bytes.NewReader(body))
+			rec := httptest.NewRecorder()
+
+			handler.ServeHTTP(rec, req)
+
+			if rec.Code != tt.expectedStatus {
+				t.Errorf("Expected status code %d, got %d", tt.expectedStatus, rec.Code)
+			}
+
+			time.Sleep(50 * time.Millisecond)
+
+			if tt.shouldEnqueue && len(mockProvider.SentEvents) != 1 {
+				t.Errorf("Expected event to be processed, but it wasn't")
+			} else if !tt.shouldEnqueue && len(mockProvider.SentEvents) > 0 {
+				t.Errorf("Expected no events to be processed, but got %d", len(mockProvider.SentEvents))
+			}
+
+			if tt.shouldEnqueue && len(mockProvider.SentEvents) == 1 {
+				expectedEvt, ok := tt.requestBody.(types.OTelEvent)
+				if !ok {
+					t.Fatalf("Test case error: requestBody not of type OTelEvent")
+				}
+
+				actualEvt := mockProvider.SentEvents[0]
+				if expectedEvt.Name != actualEvt.Name {
+					t.Errorf("Expected event name %s, got %s", expectedEvt.Name, actualEvt.Name)
 				}
 			}
 		})
