@@ -19,6 +19,7 @@ type Processor struct {
 	wg               sync.WaitGroup
 }
 
+// NewEventProcessor creates a new event processor with the given provider registry and buffer size.
 func NewEventProcessor(providerRegistry *provider.Registry, bufferSize int) *Processor {
 	return &Processor{
 		providerRegistry: providerRegistry,
@@ -27,6 +28,7 @@ func NewEventProcessor(providerRegistry *provider.Registry, bufferSize int) *Pro
 	}
 }
 
+// Start begins processing events in a separate goroutine.
 func (p *Processor) Start() {
 	p.wg.Add(1)
 	go p.processEvents()
@@ -73,6 +75,7 @@ func (p *Processor) handleEvent(event types.OTelEvent) {
 	providerWg.Wait()
 }
 
+// EnqueueEvent adds an event to the processing queue. If the queue is full, it drops the event.
 func (p *Processor) EnqueueEvent(event types.OTelEvent) {
 	select {
 	case p.eventChan <- event:
@@ -81,6 +84,7 @@ func (p *Processor) EnqueueEvent(event types.OTelEvent) {
 	}
 }
 
+// Shutdown gracefully shuts down the event processor, waiting for all events to be processed.
 func (p *Processor) Shutdown() error {
 	log.Println("Shutting down event processor...")
 	close(p.done)
