@@ -17,16 +17,14 @@ func TelemetryCollectHandler(eventProcessor *event.EventProcessor) http.HandlerF
 			return
 		}
 
-		var event types.OTelEvent
-		if err := json.NewDecoder(r.Body).Decode(&event); err != nil {
+		var evt types.OTelEvent
+		if err := json.NewDecoder(r.Body).Decode(&evt); err != nil {
 			http.Error(w, "Invalid request body", http.StatusBadRequest)
 			return
 		}
 
-		// Enqueue the event for processing
-		eventProcessor.EnqueueEvent(event)
+		eventProcessor.EnqueueEvent(evt)
 
-		// Return immediately, don't wait for processing to complete
 		w.WriteHeader(http.StatusAccepted)
 	}
 }
