@@ -11,13 +11,13 @@ import (
 )
 
 type EventProcessor struct {
-	providerRegistry *provider.ProviderRegistry
+	providerRegistry *provider.Registry
 	eventChan        chan types.OTelEvent
 	done             chan struct{}
 	wg               sync.WaitGroup
 }
 
-func NewEventProcessor(providerRegistry *provider.ProviderRegistry, bufferSize int) *EventProcessor {
+func NewEventProcessor(providerRegistry *provider.Registry, bufferSize int) *EventProcessor {
 	return &EventProcessor{
 		providerRegistry: providerRegistry,
 		eventChan:        make(chan types.OTelEvent, bufferSize),

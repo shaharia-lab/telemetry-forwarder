@@ -5,14 +5,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/shaharia-lab/telemetry-forwarder/internal/config"
-	http2 "github.com/shaharia-lab/telemetry-forwarder/internal/http"
-	"github.com/shaharia-lab/telemetry-forwarder/internal/types"
 	"io/ioutil"
 	"log"
 	"math"
 	"net/http"
 	"time"
+
+	"github.com/shaharia-lab/telemetry-forwarder/internal/config"
+	http2 "github.com/shaharia-lab/telemetry-forwarder/internal/http"
+	"github.com/shaharia-lab/telemetry-forwarder/internal/types"
 )
 
 // SharedHTTP is a shared HTTP client for sending telemetry data.
@@ -125,4 +126,9 @@ func (h *HoneycombProvider) Send(ctx context.Context, event types.OTelEvent) err
 		h.circuitBreaker.RecordFailure()
 		return fmt.Errorf("failed to send to Honeycomb after multiple attempts")
 	}
+}
+
+// Close is a no-op for HoneycombProvider as it does not maintain any persistent connections.
+func (h *HoneycombProvider) Close() error {
+	return nil
 }

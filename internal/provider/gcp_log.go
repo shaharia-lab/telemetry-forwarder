@@ -28,15 +28,12 @@ func NewGCPLoggingProvider(ctx context.Context, cfg *config.Config) (*GCPLogging
 		return nil, fmt.Errorf("GCP Logging provider is not enabled or project ID is not set")
 	}
 
-	// ADC is used by default if no explicit credentials option is provided.
-	// You could add option.WithCredentialsFile(path) if needed, but avoid for Cloud Run.
 	client, err := logging.NewClient(ctx, fmt.Sprintf("projects/%s", cfg.GCPProjectID))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create GCP Logging client: %w", err)
 	}
 
 	client.OnError = func(err error) {
-		// This will log errors happening during background sends (permissions, network, etc.)
 		log.Printf("!!! GCP Logging Background Error: %v", err)
 	}
 
