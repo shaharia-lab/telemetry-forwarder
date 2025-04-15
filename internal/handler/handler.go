@@ -1,16 +1,16 @@
+// File: internal/handler/telemetry_handler.go
 package handler
 
 import (
 	"encoding/json"
-	"github.com/shaharia-lab/telemetry-forwarder/internal/provider"
-	"github.com/shaharia-lab/telemetry-forwarder/internal/types"
-	"log"
 	"net/http"
-	"sync"
+
+	"github.com/shaharia-lab/telemetry-forwarder/internal/event"
+	"github.com/shaharia-lab/telemetry-forwarder/internal/types"
 )
 
-// TelemetryCollectHandler handles incoming telemetry events and forwards them to the configured providers.
-func TelemetryCollectHandler(providerRegistry *provider.ProviderRegistry) http.HandlerFunc {
+// TelemetryCollectHandler handles incoming telemetry events and forwards them to the event processor.
+func TelemetryCollectHandler(eventProcessor *event.EventProcessor) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -23,20 +23,10 @@ func TelemetryCollectHandler(providerRegistry *provider.ProviderRegistry) http.H
 			return
 		}
 
-		var wg sync.WaitGroup
-		for _, prv := range providerRegistry.GetAll() {
-			if prv.IsEnabled() {
-				wg.Add(1)
-				go func(p provider.Provider) {
-					defer wg.Done()
-					if err := p.Send(r.Context(), event); err != nil {
-						log.Printf("Error forwarding to %s: %v", p.Name(), err)
-					}
-				}(prv)
-			}
-		}
-		wg.Wait()
+		// Enqueue the event for processing
+		eventProcessor.EnqueueEvent(event)
 
-		w.WriteHeader(http.StatusOK)
+		// Return immediately, don't wait for processing to complete
+		w.WriteHeader(http.StatusAccepted)
 	}
 }

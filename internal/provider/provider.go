@@ -9,4 +9,5 @@ type Provider interface {
 	Send(ctx context.Context, event types.OTelEvent) error
 	Name() string
 	IsEnabled() bool
+	Close() error
 }

@@ -2,6 +2,7 @@ package provider
 
 import (
 	"github.com/shaharia-lab/telemetry-forwarder/internal/config"
+	"log"
 	"sync"
 )
 
@@ -39,4 +40,15 @@ func (r *ProviderRegistry) GetAll() []Provider {
 		result = append(result, prv)
 	}
 	return result
+}
+
+func (r *ProviderRegistry) Shutdown() error {
+	var lastErr error
+	for _, p := range r.providers {
+		if err := p.Close(); err != nil {
+			lastErr = err
+			log.Printf("Error closing provider %s: %v", p.Name(), err)
+		}
+	}
+	return lastErr
 }
