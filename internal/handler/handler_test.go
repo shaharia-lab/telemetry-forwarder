@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
@@ -15,14 +16,26 @@ import (
 	"github.com/shaharia-lab/telemetry-forwarder/internal/types"
 )
 
-// MockProvider implements the provider.Provider interface for testing
+// MockProvider implements the provider.Provider interface for testing.
+// Send is called from the event processor's goroutine while the test reads
+// the recorded events, so every access is guarded by mu.
 type MockProvider struct {
-	SentEvents []types.OTelEvent
+	mu         sync.Mutex
+	sentEvents []types.OTelEvent
 }
 
 func (mp *MockProvider) Send(ctx context.Context, event types.OTelEvent) error {
-	mp.SentEvents = append(mp.SentEvents, event)
+	mp.mu.Lock()
+	defer mp.mu.Unlock()
+	mp.sentEvents = append(mp.sentEvents, event)
 	return nil
+}
+
+// SentEvents returns a snapshot of the events recorded so far.
+func (mp *MockProvider) SentEvents() []types.OTelEvent {
+	mp.mu.Lock()
+	defer mp.mu.Unlock()
+	return append([]types.OTelEvent(nil), mp.sentEvents...)
 }
 
 func (mp *MockProvider) Name() string {
@@ -73,9 +86,7 @@ func TestTelemetryCollectHandler(t *testing.T) {
 			cfg := &config.Config{}
 			registry := provider.NewProviderRegistry(cfg)
 
-			mockProvider := &MockProvider{
-				SentEvents: []types.OTelEvent{},
-			}
+			mockProvider := &MockProvider{}
 
 			registry.Register(mockProvider)
 
@@ -110,21 +121,31 @@ func TestTelemetryCollectHandler(t *testing.T) {
 				t.Errorf("Expected status code %d, got %d", tt.expectedStatus, rec.Code)
 			}
 
-			time.Sleep(50 * time.Millisecond)
-
-			if tt.shouldEnqueue && len(mockProvider.SentEvents) != 1 {
-				t.Errorf("Expected event to be processed, but it wasn't")
-			} else if !tt.shouldEnqueue && len(mockProvider.SentEvents) > 0 {
-				t.Errorf("Expected no events to be processed, but got %d", len(mockProvider.SentEvents))
+			// The processor handles events asynchronously; wait for the
+			// expected one rather than assuming a fixed delay is enough.
+			deadline := time.Now().Add(2 * time.Second)
+			for tt.shouldEnqueue && len(mockProvider.SentEvents()) == 0 && time.Now().Before(deadline) {
+				time.Sleep(5 * time.Millisecond)
+			}
+			if !tt.shouldEnqueue {
+				time.Sleep(50 * time.Millisecond)
 			}
 
-			if tt.shouldEnqueue && len(mockProvider.SentEvents) == 1 {
+			sent := mockProvider.SentEvents()
+
+			if tt.shouldEnqueue && len(sent) != 1 {
+				t.Errorf("Expected event to be processed, but it wasn't")
+			} else if !tt.shouldEnqueue && len(sent) > 0 {
+				t.Errorf("Expected no events to be processed, but got %d", len(sent))
+			}
+
+			if tt.shouldEnqueue && len(sent) == 1 {
 				expectedEvt, ok := tt.requestBody.(types.OTelEvent)
 				if !ok {
 					t.Fatalf("Test case error: requestBody not of type OTelEvent")
 				}
 
-				actualEvt := mockProvider.SentEvents[0]
+				actualEvt := sent[0]
 				if expectedEvt.Name != actualEvt.Name {
 					t.Errorf("Expected event name %s, got %s", expectedEvt.Name, actualEvt.Name)
 				}
