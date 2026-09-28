@@ -1,5 +1,8 @@
 # OpenTelemetry to Honeycomb Forwarder
 
+> [!WARNING]
+> **Archived — superseded by GCP-native telemetry; kept for reference.** Nothing deploys or calls this service any more, and it receives no updates. See [shaharia-lab/infrastructure#243](https://github.com/shaharia-lab/infrastructure/issues/243).
+
 A lightweight service that forwards OpenTelemetry events to Honeycomb.io.
 
 ## Overview
